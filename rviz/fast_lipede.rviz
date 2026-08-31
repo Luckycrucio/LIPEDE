@@ -1,0 +1,108 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+  - Class: rviz_common/Views
+    Name: Views
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Alpha: 0.25
+      Class: rviz_default_plugins/PointCloud2
+      Color: 120; 120; 120
+      Color Transformer: FlatColor
+      Decay Time: 0
+      Enabled: true
+      Name: Original Ouster cloud
+      Position Transformer: XYZ
+      Queue Size: 2
+      Selectable: true
+      Size (Pixels): 2
+      Size (m): 0.01
+      Style: Points
+      Topic:
+        Depth: 1
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Best Effort
+        Value: /ouster/points
+      Use Fixed Frame: true
+      Value: true
+    - Alpha: 1
+      Class: rviz_default_plugins/PointCloud2
+      Color: 60; 180; 255
+      Color Transformer: FlatColor
+      Decay Time: 0
+      Enabled: false
+      Name: Processed cloud (people removed)
+      Position Transformer: XYZ
+      Queue Size: 2
+      Selectable: true
+      Size (Pixels): 2
+      Size (m): 0.01
+      Style: Points
+      Topic:
+        Depth: 1
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Best Effort
+        Value: /ouster/points/processed
+      Use Fixed Frame: true
+      Value: false
+    - Alpha: 1
+      Class: rviz_default_plugins/PointCloud2
+      Color: 255; 255; 0
+      Color Transformer: FlatColor
+      Decay Time: 0
+      Enabled: true
+      Name: People detections (yellow)
+      Position Transformer: XYZ
+      Queue Size: 2
+      Selectable: true
+      Size (Pixels): 5
+      Size (m): 0.04
+      Style: Points
+      Topic:
+        Depth: 1
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Best Effort
+        Value: /ouster/points/people
+      Use Fixed Frame: true
+      Value: true
+    - Class: rviz_default_plugins/Grid
+      Enabled: true
+      Name: Grid
+      Plane: XY
+      Cell Size: 1
+      Color: 100; 100; 100
+      Alpha: 0.35
+      Value: true
+  Enabled: true
+  Global Options:
+    Background Color: 25; 25; 25
+    Fixed Frame: os_sensor
+    Frame Rate: 30
+  Name: root
+  Tools:
+    - Class: rviz_default_plugins/Interact
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/Select
+    - Class: rviz_default_plugins/FocusCamera
+  Transformation:
+    Current:
+      Class: rviz_default_plugins/TF
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Distance: 25
+      Focal Point:
+        X: 0
+        Y: 0
+        Z: 0
+      Name: Current View
+      Pitch: 0.55
+      Target Frame: os_sensor
+      Yaw: 0.8
+Window Geometry:
+  Height: 900
+  Width: 1440

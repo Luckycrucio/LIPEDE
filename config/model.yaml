@@ -1,0 +1,12 @@
+model_params:
+  model_architecture: largekernelseg
+  input_dims: 13
+  spatial_shape: [2000, 2000, 120]
+  scale_list: [2, 4, 8, 16]
+  hiden_size: 64
+  num_classes: 21
+  large_kernel_size: [9, 9, 9]
+  rwkv_layers: 8
+dataset_params:
+  min_volume_space: [-50.0, -50.0, -4.0]
+  max_volume_space: [50.0, 50.0, 4.0]

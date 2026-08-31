@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>fast_lipede</name>
+  <version>0.1.0</version>
+  <description>Real-time LARS semantic filtering for Ouster PointCloud2 streams.</description>
+  <maintainer email="maintainer@example.com">FAST-LIPEDE maintainer</maintainer>
+  <license>Apache-2.0</license>
+  <buildtool_depend>ament_python</buildtool_depend>
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
+  <exec_depend>python3-opencv</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>rviz2</exec_depend>
+  <export><build_type>ament_python</build_type></export>
+</package>

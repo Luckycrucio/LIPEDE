@@ -1,0 +1,2 @@
+# Large model checkpoint is stored locally, not in Git.
+models/model_8rwkv.0pth
