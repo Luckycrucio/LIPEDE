@@ -9,6 +9,11 @@ and publishes only positively classified people points on
 The ROS package name is `fast_lipede` because ROS 2 package names cannot contain
 hyphens.
 
+![FAST-LIPEDE people detection in RViz](docs/images/fast-lipede-rviz.png)
+
+*FAST-LIPEDE in RViz: the filtered environment cloud is shown in blue and
+detected people are highlighted in yellow.*
+
 ## AUTOSWEEP USAGE
 
 Launch the fast-lipede ros2 node:
