@@ -1,6 +1,6 @@
 # FAST-LIPEDE
 
-FAST-LIPEDE (fats LiDAR PEople DEtector) is a ROS 2 Python node that runs one LARS/LSK3DNet inference per
+FAST-LIPEDE (fast LiDAR PEople DEtector) is a ROS 2 Python node that runs one LARS/LSK3DNet inference per
 incoming Ouster cloud and removes points classified as people. It subscribes to
 `/ouster/points`, publishes the filtered cloud on `/ouster/points/processed`,
 and publishes only positively classified people points on
@@ -12,21 +12,27 @@ hyphens.
 ## AUTOSWEEP USAGE
 
 Launch the fast-lipede ros2 node:
-- lipede
-- ros2 launch fast_lipede fast_lipede.launch.py
+- lipede() {
+    cd /home/autosweep/fast_lipede_ws || return
+    source install/setup.bash
+    source .venv/bin/activate
+    export PYTHONPATH="$VIRTUAL_ENV/lib/python3.12/site-packages${PYTHONPATH:+:$PYTHONPATH}"
+    cd ..
+    ros2 launch fast_lipede fast_lipede.launch.py
+  }
 
 Luanch a SLAM algorithm like GLIM:
-- glim
-- ros2 run glim_ros glim_rosnode \
-  --ros-args \
-  -p config_path:=/home/autosweep/glim_ws/src/glim/config \
-  -r /ouster/points:=/ouster/points/processed
+- glim() {
+    source /home/autosweep/glim_ws/install/setup.bash
+    ros2 run glim_ros glim_rosnode \
+    --ros-args \
+    -p config_path:=/home/autosweep/glim_ws/src/glim/config \
+    -r /ouster/points:=/ouster/points/processed            
+  }
 
 Play the bag:
 - jazzy
 - ros2 bag play   /home/autosweep/autosweep/dataset22jul/coverage1 
-
-
 
 ## Data path through the node
 
