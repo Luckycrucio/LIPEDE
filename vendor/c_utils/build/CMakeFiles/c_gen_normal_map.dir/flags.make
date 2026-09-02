@@ -6,5 +6,5 @@ CXX_DEFINES = -Dc_gen_normal_map_EXPORTS
 
 CXX_INCLUDES = -isystem /usr/include/python3.12
 
-CXX_FLAGS = -std=gnu++11 -fPIC -fvisibility=hidden -flto -fno-fat-lto-objects -fopenmp
+CXX_FLAGS = -O3 -DNDEBUG -std=gnu++11 -fPIC -fvisibility=hidden -flto -fno-fat-lto-objects -fopenmp
 

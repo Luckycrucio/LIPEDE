@@ -1,4 +1,4 @@
-# Install script for directory: /home/autosweep/fast_lipede_ws/src/FAST-LIPEDE/vendor/c_utils
+# Install script for directory: /home/autosweep/lipede_ws/src/LIPEDE/vendor/c_utils
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
@@ -12,7 +12,7 @@ if(NOT DEFINED CMAKE_INSTALL_CONFIG_NAME)
     string(REGEX REPLACE "^[^A-Za-z0-9_]+" ""
            CMAKE_INSTALL_CONFIG_NAME "${BUILD_TYPE}")
   else()
-    set(CMAKE_INSTALL_CONFIG_NAME "")
+    set(CMAKE_INSTALL_CONFIG_NAME "Release")
   endif()
   message(STATUS "Install configuration: \"${CMAKE_INSTALL_CONFIG_NAME}\"")
 endif()
@@ -50,5 +50,5 @@ endif()
 
 string(REPLACE ";" "\n" CMAKE_INSTALL_MANIFEST_CONTENT
        "${CMAKE_INSTALL_MANIFEST_FILES}")
-file(WRITE "/home/autosweep/fast_lipede_ws/src/FAST-LIPEDE/vendor/c_utils/build/${CMAKE_INSTALL_MANIFEST}"
+file(WRITE "/home/autosweep/lipede_ws/src/LIPEDE/vendor/c_utils/build/${CMAKE_INSTALL_MANIFEST}"
      "${CMAKE_INSTALL_MANIFEST_CONTENT}")

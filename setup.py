@@ -2,7 +2,7 @@ from glob import glob
 import os
 from setuptools import find_packages, setup
 
-package_name = "fast_lipede"
+package_name = "lipede"
 
 
 def tree_data(source):
@@ -30,5 +30,8 @@ setup(
     maintainer_email="maintainer@example.com",
     description="Real-time LARS semantic filtering for Ouster PointCloud2 streams.",
     license="Apache-2.0",
-    entry_points={"console_scripts": ["fast_lipede_node = fast_lipede.node:main"]},
+    entry_points={"console_scripts": [
+        "lipede_node = lipede.online_node:main",
+        "lipede_offline = lipede.offline_node:main",
+    ]},
 )

@@ -1,39 +1,46 @@
-# FAST-LIPEDE
+# LIPEDE
 
-FAST-LIPEDE (fast LiDAR PEople DEtector) is a ROS 2 Python node that runs one LARS/LSK3DNet inference per
-incoming Ouster cloud and removes points classified as people. It subscribes to
-`/ouster/points`, publishes the filtered cloud on `/ouster/points/processed`,
-and publishes only positively classified people points on
-`/ouster/points/people`.
+LIPEDE (LiDAR PEople DEtector) provides online and offline ROS 2 Python nodes
+that use LARS/LSK3DNet to detect people and remove their points from Ouster
+clouds. The online node processes live clouds from `/ouster/points` and publishes
+the filtered environment and detected people on `/ouster/points/processed` and
+`/ouster/points/people`. The offline node sequentially processes every cloud in
+a recorded ROS 2 bag and writes a complete people-free output bag for later use.
 
-The ROS package name is `fast_lipede` because ROS 2 package names cannot contain
+The ROS package name is `lipede` because ROS 2 package names cannot contain
 hyphens.
 
-![FAST-LIPEDE people detection in RViz](docs/images/fast-lipede-rviz.png)
+![LIPEDE people detection in RViz](docs/images/fast-lipede-rviz.png)
 
-*FAST-LIPEDE in RViz: the filtered environment cloud is shown in blue and
+*LIPEDE in RViz: the filtered environment cloud is shown in blue and
 detected people are highlighted in yellow.*
 
 ## AUTOSWEEP USAGE
 
 Launch the fast-lipede ros2 node:
 - lipede() {
-    cd /home/autosweep/fast_lipede_ws || return
+    cd /home/autosweep/lipede_ws || return
     source install/setup.bash
     source .venv/bin/activate
     export PYTHONPATH="$VIRTUAL_ENV/lib/python3.12/site-packages${PYTHONPATH:+:$PYTHONPATH}"
     cd ..
-    ros2 launch fast_lipede fast_lipede.launch.py
+    ros2 launch lipede lipede.launch.py
   }
 
 Luanch a SLAM algorithm like GLIM:
 - glim() {
     source /home/autosweep/glim_ws/install/setup.bash
-    ros2 run glim_ros glim_rosnode \
-    --ros-args \
-    -p config_path:=/home/autosweep/glim_ws/src/glim/config \
-    -r /ouster/points:=/ouster/points/processed            
+    ros2 run glim_ros glim_rosnode glim_rosbag /home/autosweep/autosweep/dataset22jul/coverage1_lipede \
+      --ros-args \
+      -p config_path:=/home/autosweep/glim_ws/src/glim/config \
+      -p dump_path:=/home/autosweep/glim_maps/my_map \
+      -r /ouster/points:=/ouster/points/processed
   }
+  - ros2 run glim_ros glim_rosnode \
+      --ros-args \
+      -p config_path:=/home/autosweep/glim_ws/src/glim/config \
+      -p dump_path:=/home/autosweep/glim_maps/my_map
+
 
 Play the bag:
 - jazzy
@@ -100,30 +107,178 @@ or this folder can be linked under `src`):
 ```bash
 source /opt/ros/$ROS_DISTRO/setup.bash
 cd /path/to/ros2_ws
-colcon build --symlink-install --packages-select fast_lipede
+colcon build --symlink-install --packages-select lipede
 source install/setup.bash
 ```
 
 For a conventional workspace layout:
 
 ```bash
-mkdir -p ~/fast_lipede_ws/src
-ln -s /path/to/LARS/FAST-LIPEDE ~/fast_lipede_ws/src/FAST-LIPEDE
-cd ~/fast_lipede_ws
-colcon build --symlink-install --packages-select fast_lipede
+mkdir -p ~/lipede_ws/src
+ln -s /path/to/LARS/LIPEDE ~/lipede_ws/src/LIPEDE
+cd ~/lipede_ws
+colcon build --symlink-install --packages-select lipede
 source install/setup.bash
 ```
+
+## Processing modes
+
+LIPEDE provides two modes that use the same neural network and point-cloud
+filtering code, but handle incoming data differently.
+
+### Real-time mode
+
+Real-time mode is intended for a live LiDAR or for cases where immediate output
+is more important than processing every scan. It is the default mode.
+
+```text
+LiDAR or ros2 bag play
+        |
+        v
+ /ouster/points
+        |
+        v
+ LIPEDE inference
+        |------------------------------|
+        v                              v
+ /ouster/points/processed     /ouster/points/people
+ environment without people       detected people
+```
+
+The node subscribes to `input_topic`, processes each cloud when its callback is
+scheduled, and immediately publishes two complementary clouds:
+
+- `output_topic` contains all original points except those classified as people;
+- `people_topic` contains only the points classified as people.
+
+The subscriber uses best-effort QoS with a queue depth of one. Consequently,
+the node always favors the newest available scan: if the sensor or bag publishes
+faster than inference can run, intermediate clouds can be dropped instead of
+creating an increasingly delayed backlog. This is desirable for live viewing,
+but it is not suitable when every scan must be preserved for later SLAM.
+
+Start real-time mode with:
+
+```bash
+ros2 launch lipede lipede.launch.py mode:=real_time
+```
+
+Then start the sensor or play a bag normally:
+
+```bash
+ros2 bag play /path/to/input_bag
+```
+
+Real-time mode does not create a new bag automatically. Record the desired
+topics separately with `ros2 bag record` if needed.
+
+### Offline mode
+
+Offline mode is intended for preparing a complete people-free dataset before
+running SLAM. It does not subscribe to a separately played bag. Instead, the
+offline node opens the bag through `rosbag2_py`, reads one record at a time, and
+runs inference sequentially. It therefore processes every point cloud regardless
+of how long inference takes.
+
+```text
+ input bag
+    |
+    | sequential read (no real-time deadline)
+    v
+ point-cloud record? -- no --> copy serialized record unchanged
+    |
+   yes
+    |
+    v
+ detect and remove people
+    |
+    v
+ write filtered cloud at the original bag time
+    |
+    v
+ <input_bag>_lipede
+```
+
+The resulting bag is created beside the input bag by default. For example:
+
+```text
+/data/coverage1              input
+/data/coverage1_lipede  output
+```
+
+The output has the same topic set as the input. Records on `input_topic` are
+replaced with their filtered clouds; all other records are copied in serialized
+form without deserializing or modifying them. For each filtered cloud, offline
+mode preserves:
+
+- the original rosbag publication timestamp;
+- `header.stamp` and `header.frame_id`;
+- the original `PointField` definitions and retained point bytes;
+- the relative ordering of all bag records.
+
+Only the cloud geometry metadata that must change after removing points is
+updated: the result is an unorganized cloud (`height=1`) with a new `width`,
+`row_step`, and data length.
+
+While conversion is running, the node also publishes the original cloud,
+filtered cloud, and people-only cloud on the configured visualization topics.
+The existing RViz configuration can therefore be used without modification.
+These live visualization messages are not added as extra topics to the output
+bag; the original point-cloud topic itself contains the corrected data.
+
+Run offline conversion with:
+
+```bash
+ros2 launch lipede lipede.launch.py \
+  mode:=offline \
+  bag_path:=/home/autosweep/autosweep/dataset22jul/coverage1
+```
+
+Do not run `ros2 bag play` at the same time. The offline node is the bag reader
+and exits after the complete output bag has been written. A custom destination
+can be selected with `output_bag_path`:
+
+```bash
+ros2 launch lipede lipede.launch.py \
+  mode:=offline \
+  bag_path:=/data/coverage1 \
+  output_bag_path:=/data/coverage1_people_free
+```
+
+To protect existing datasets, conversion fails if the output path already
+exists. Pass `overwrite_output:=true` only when replacing that output is
+intentional. If inference fails for an individual cloud and
+`passthrough_on_error` is enabled, that cloud is copied unchanged and the error
+is reported in the conversion summary.
+
+After conversion, use the generated bag as a normal input to GLIM or another
+SLAM system:
+
+```bash
+ros2 bag play /data/coverage1_lipede
+```
+
+### Mode comparison
+
+| Property | Real-time | Offline |
+|---|---|---|
+| Input | ROS topic | Bag path |
+| Processing rate | Constrained by live publication | As fast as inference allows |
+| Can skip clouds | Yes, when input is faster than inference | No |
+| Output | Two live ROS topics | New bag plus visualization topics |
+| Bag timestamps preserved | Not applicable unless separately recorded | Yes |
+| Recommended use | Live monitoring and immediate filtering | Complete preprocessing before SLAM |
 
 ## Run the node only
 
 ```bash
-ros2 run fast_lipede fast_lipede_node
+ros2 run lipede lipede_node
 ```
 
 ## Launch the node and RViz
 
 ```bash
-ros2 launch fast_lipede fast_lipede.launch.py
+ros2 launch lipede lipede.launch.py
 ```
 
 The included RViz YAML configuration displays:
@@ -140,7 +295,8 @@ frame in RViz, then save the configuration if desired.
 Launch arguments can override the node topics and device:
 
 ```bash
-ros2 launch fast_lipede fast_lipede.launch.py \
+ros2 launch lipede lipede.launch.py \
+  mode:=real_time \
   input_topic:=/ouster/points \
   output_topic:=/ouster/points/processed \
   people_topic:=/ouster/points/people \
@@ -152,7 +308,7 @@ The launch file also applies these topic overrides as RViz remappings.
 Useful parameters:
 
 ```bash
-ros2 run fast_lipede fast_lipede_node --ros-args \
+ros2 run lipede lipede_node --ros-args \
   -p input_topic:=/ouster/points \
   -p output_topic:=/ouster/points/processed \
   -p people_topic:=/ouster/points/people \
@@ -195,7 +351,7 @@ The model input is equivalent to a SemanticKITTI-style `.bin` file:
 xyzi.astype(np.float32).tofile("scan.bin")
 ```
 
-FAST-LIPEDE deliberately does not perform this disk write. It passes the same
+LIPEDE deliberately does not perform this disk write. It passes the same
 `N x 4` values directly to preprocessing, avoiding filesystem latency and a
 second read/copy.
 

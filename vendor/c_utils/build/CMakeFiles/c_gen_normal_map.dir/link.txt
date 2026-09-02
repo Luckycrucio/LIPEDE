@@ -1,1 +1,1 @@
-/usr/bin/c++ -fPIC -flto -shared  -o c_gen_normal_map.cpython-312-x86_64-linux-gnu.so CMakeFiles/c_gen_normal_map.dir/src/c_gen_normal_map.cpp.o  /usr/lib/gcc/x86_64-linux-gnu/13/libgomp.so /usr/lib/x86_64-linux-gnu/libpthread.a 
+/usr/bin/c++ -fPIC -O3 -DNDEBUG -flto -shared  -o c_gen_normal_map.cpython-312-x86_64-linux-gnu.so CMakeFiles/c_gen_normal_map.dir/src/c_gen_normal_map.cpp.o  /usr/lib/gcc/x86_64-linux-gnu/13/libgomp.so /usr/lib/x86_64-linux-gnu/libpthread.a 

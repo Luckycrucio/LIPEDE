@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <package format="3">
-  <name>fast_lipede</name>
+  <name>lipede</name>
   <version>0.1.0</version>
   <description>Real-time LARS semantic filtering for Ouster PointCloud2 streams.</description>
   <maintainer email="maintainer@example.com">FAST-LIPEDE maintainer</maintainer>
@@ -9,6 +9,7 @@
   <exec_depend>rclpy</exec_depend>
   <exec_depend>ament_index_python</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>rosbag2_py</exec_depend>
   <exec_depend>python3-numpy</exec_depend>
   <exec_depend>python3-opencv</exec_depend>
   <exec_depend>python3-yaml</exec_depend>

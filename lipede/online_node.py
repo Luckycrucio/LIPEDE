@@ -87,7 +87,7 @@ class LarsInference:
         import torch
         import yaml
 
-        installed_vendor = Path(get_package_share_directory("fast_lipede")) / "vendor"
+        installed_vendor = Path(get_package_share_directory("lipede")) / "vendor"
         source_vendor = Path(__file__).resolve().parents[1] / "vendor"
         vendor = installed_vendor if installed_vendor.exists() else source_vendor
         normal_build = vendor / "c_utils" / "build"
@@ -144,8 +144,8 @@ class LarsInference:
 
 class FastLipedeNode(Node):
     def __init__(self):
-        super().__init__("fast_lipede")
-        share = Path(get_package_share_directory("fast_lipede"))
+        super().__init__("lipede")
+        share = Path(get_package_share_directory("lipede"))
         self.declare_parameter("input_topic", "/ouster/points")
         self.declare_parameter("output_topic", "/ouster/points/processed")
         self.declare_parameter("people_topic", "/ouster/points/people")
