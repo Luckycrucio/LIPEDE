@@ -55,8 +55,21 @@ def decode_xyzi(msg: PointCloud2, intensity_field: str) -> np.ndarray:
     return np.column_stack(columns).astype(np.float32, copy=False)
 
 
-def filter_records(msg: PointCloud2, keep: np.ndarray) -> PointCloud2:
-    """Copy retained point records byte-for-byte into a compact unorganized cloud."""
+def filter_records(msg: PointCloud2, keep: np.ndarray, organized: bool = False) -> PointCloud2:
+    """Return a filtered copy of a PointCloud2.
+
+    organized=False (default): compact the kept records into a dense unorganized
+    (height=1) cloud. Cheapest to build, fine for the people-only debug topic,
+    but it destroys the (ring, azimuth-column) grid.
+
+    organized=True: keep the original height/width grid. Records that are not
+    kept are NaN'd out in place (x/y/z=NaN, range=0) exactly like the native
+    Ouster driver already encodes its own invalid returns, instead of being
+    squeezed out. Consumers that index the cloud as (ring, column) - edge/
+    normal filters, LOAM-style feature extraction, projective correspondence
+    search - need that fixed grid to keep working; compacting drops it and
+    makes height=1 with a per-scan-variable width.
+    """
     count = msg.height * msg.width
     if keep.shape != (count,):
         raise ValueError(f"keep mask has {keep.size} entries, expected {count}")
@@ -68,14 +81,36 @@ def filter_records(msg: PointCloud2, keep: np.ndarray) -> PointCloud2:
                       offset=row * msg.row_step).reshape(msg.width, msg.point_step)
         for row in range(msg.height)
     ])
-    kept = np.ascontiguousarray(rows[keep])
+
     output = PointCloud2()
     output.header = copy.deepcopy(msg.header)
-    output.height = 1
-    output.width = int(kept.shape[0])
     output.fields = copy.deepcopy(msg.fields)
     output.is_bigendian = msg.is_bigendian
     output.point_step = msg.point_step
+
+    if organized:
+        removed = ~keep
+        data = rows.copy()
+        if np.any(removed):
+            endian = ">" if msg.is_bigendian else "<"
+            fields = _field_map(msg)
+            nan_bytes = np.frombuffer(np.float32(np.nan).astype(endian + "f4").tobytes(), dtype=np.uint8)
+            zero_bytes = np.frombuffer(np.uint32(0).astype(endian + "u4").tobytes(), dtype=np.uint8)
+            for name in ("x", "y", "z"):
+                offset = fields[name].offset
+                data[removed, offset:offset + 4] = nan_bytes
+            range_offset = fields["range"].offset
+            data[removed, range_offset:range_offset + 4] = zero_bytes
+        output.height = msg.height
+        output.width = msg.width
+        output.row_step = output.width * output.point_step
+        output.data = data.reshape(-1).tobytes()
+        output.is_dense = bool(msg.is_dense) and not np.any(removed)
+        return output
+
+    kept = np.ascontiguousarray(rows[keep])
+    output.height = 1
+    output.width = int(kept.shape[0])
     output.row_step = output.width * output.point_step
     output.data = kept.tobytes()
     output.is_dense = msg.is_dense
@@ -189,7 +224,7 @@ class FastLipedeNode(Node):
             predictions, inferred_indices = self.engine.predict(xyzi)
             people = np.zeros(msg.height * msg.width, dtype=bool)
             people[inferred_indices[np.isin(predictions, self.people_ids)]] = True
-            self.publisher.publish(filter_records(msg, ~people))
+            self.publisher.publish(filter_records(msg, ~people, organized=True))
             self.people_publisher.publish(filter_records(msg, people))
             elapsed_ms = (time.perf_counter() - started) * 1000.0
             self.get_logger().info(

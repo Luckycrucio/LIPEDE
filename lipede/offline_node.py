@@ -83,7 +83,11 @@ class OfflineFastLipedeNode(Node):
         predictions, inferred_indices = self.engine.predict(xyzi)
         people = np.zeros(msg.height * msg.width, dtype=bool)
         people[inferred_indices[np.isin(predictions, self.people_ids)]] = True
-        return filter_records(msg, ~people), filter_records(msg, people), int(people.sum())
+        return (
+            filter_records(msg, ~people, organized=True),
+            filter_records(msg, people),
+            int(people.sum()),
+        )
 
     def _run_once(self) -> None:
         self.start_timer.cancel()

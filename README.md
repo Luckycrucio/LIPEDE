@@ -24,7 +24,9 @@ Launch the fast-lipede ros2 node:
     source .venv/bin/activate
     export PYTHONPATH="$VIRTUAL_ENV/lib/python3.12/site-packages${PYTHONPATH:+:$PYTHONPATH}"
     cd ..
-    ros2 launch lipede lipede.launch.py
+    ros2 launch lipede lipede.launch.py \
+      mode:=offline \
+      bag_path:=/home/autosweep/autosweep/dataset22jul/bordi
   }
 
 Luanch a SLAM algorithm like GLIM:
@@ -67,13 +69,60 @@ For each `sensor_msgs/msg/PointCloud2` message, the node:
 6. Splits the original point records into two complementary messages:
    `/ouster/points/processed` contains everything except people, while
    `/ouster/points/people` contains only positive people detections.
-7. Copies every selected original `point_step`-byte record byte-for-byte. Thus
-   timestamps, frame ID, field layout, and all retained Ouster point attributes
-   are preserved exactly. Width, row step, and data length necessarily change.
-   Both outputs are unorganized (`height=1`) clouds.
+7. Copies every selected original `point_step`-byte record byte-for-byte, so
+   timestamps, frame ID, field layout, and all retained Ouster point
+   attributes are preserved exactly.
+   - `/ouster/points/processed` keeps the **original organized grid**
+     (`height`/`width`/`row_step` unchanged): records classified as people are
+     NaN'd out in place (`x`/`y`/`z = NaN`, `range = 0`) instead of being
+     squeezed out - the same encoding the Ouster driver already uses for its
+     own invalid returns. Every other record (including points that were
+     already invalid, or valid points the model never saw because they fell
+     outside its crop) keeps its original value unchanged. See "Why the
+     processed output stays organized" below.
+   - `/ouster/points/people` (debug/visualization only) is still compacted
+     into an unorganized (`height=1`) cloud, since nothing downstream needs
+     its grid structure.
 
 Points outside the model crop are retained because the network cannot classify
 them. If processing fails, the original message is published by default.
+
+### Why the processed output stays organized
+
+Ouster publishes one *organized* `PointCloud2` per revolution: `height` is
+the number of laser rings (64) and `width` the number of azimuth firings per
+revolution (1024), with row index equal to the `ring` field. Several
+downstream consumers rely on that fixed grid to do cheap neighbor lookups by
+array indexing instead of a k-nearest-neighbour search - for example the
+`glim_ws/meshes/finer_mapping` mesh builder's within-ring edge filter and
+its cross-ring finite-difference normal estimation, and any LOAM-style
+feature extraction or range-image/projective-correspondence SLAM front end.
+
+Earlier, `filter_records` always compacted the kept points into a dense
+unorganized cloud (`height=1`, boolean-mask-selected records). That is cheap
+and lossless byte-for-byte, but it destroys the grid: `width` becomes the
+per-scan *count of surviving points* (variable, since a different number of
+points is removed each revolution) instead of the fixed azimuth-firing
+count, and "row" no longer means "ring." A consumer trying to reconstruct
+`(ring, azimuth-column)` from the compacted cloud can regroup points by the
+surviving `ring` field, but each ring loses a different, independently-sized
+set of points (a person doesn't occlude every beam identically), so "column
+i in ring r" no longer corresponds to the same azimuth as "column i in ring
+r+1" - cross-ring operations like normal estimation become meaningless
+without also reconstructing true azimuth alignment, which the compacted
+cloud provides no way to do.
+
+Keeping `height`/`width`/`row_step` fixed and NaN'ing out removed records in
+place (mirroring the native invalid-return encoding, so `range_m > 0` still
+means "valid" downstream) avoids all of that: every consumer that already
+knows how to skip invalid Ouster returns keeps working unmodified, and grid
+adjacency (same-ring neighbors, same-column across rings) stays meaningful
+everywhere it wasn't removed. The only cost is that the processed cloud no
+longer shrinks with the number of removed points (same `width` as the
+input, values NaN'd rather than dropped) - a worthwhile trade since removed
+points are typically a small fraction of a scan. The people-only debug
+topic doesn't need any of this and stays compacted, since it exists purely
+for RViz visualization.
 
 ## Included inference files
 
@@ -216,9 +265,12 @@ mode preserves:
 - the original `PointField` definitions and retained point bytes;
 - the relative ordering of all bag records.
 
-Only the cloud geometry metadata that must change after removing points is
-updated: the result is an unorganized cloud (`height=1`) with a new `width`,
-`row_step`, and data length.
+The filtered cloud on `input_topic` keeps its original `height`/`width`/
+`row_step`; removed records are NaN'd out in place rather than compacted (see
+"Why the processed output stays organized" below). The people-only debug
+cloud is still compacted into an unorganized cloud (`height=1`) with a new
+`width`, `row_step`, and data length, since it is only used for RViz
+visualization.
 
 While conversion is running, the node also publishes the original cloud,
 filtered cloud, and people-only cloud on the configured visualization topics.
@@ -362,6 +414,7 @@ second read/copy.
 - Rebuild the normal-map extension for maximum throughput if the node reports a
   Python ABI mismatch; the portable vectorized fallback is slower.
 - Latency is logged at most once per second.
-- Input fields are viewed without conversion. A compact output buffer must be
-  allocated because deleting arbitrary point records cannot be represented as a
-  zero-copy `PointCloud2` message.
+- Input fields are viewed without conversion, but neither output is zero-copy:
+  `/ouster/points/processed` needs its own buffer to NaN out removed records
+  in place, and `/ouster/points/people` needs a compacted buffer since
+  deleting arbitrary records can't be represented as a view.
