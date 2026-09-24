@@ -63,8 +63,7 @@ class OfflineFastLipedeNode(Node):
         qos.reliability = ReliabilityPolicy.BEST_EFFORT
         qos.history = HistoryPolicy.KEEP_LAST
         self.original_publisher = self.create_publisher(
-            PointCloud2,
-            "/lipede/aligned_points" if self.lidar_mode == "dome" else self.input_topic, qos
+            PointCloud2, self.input_topic, qos
         )
         self.filtered_publisher = self.create_publisher(
             PointCloud2, self.get_parameter("output_topic").value, qos
@@ -82,7 +81,8 @@ class OfflineFastLipedeNode(Node):
         self.start_timer = self.create_timer(1.0, self._run_once)
 
     def _filter(self, msg: PointCloud2) -> tuple[PointCloud2, PointCloud2, int]:
-        xyzi = decode_xyzi(msg, self.intensity_field)
+        aligned = align_cloud(msg, self.lidar_mode)
+        xyzi = decode_xyzi(aligned, self.intensity_field)
         predictions, inferred_indices = self.engine.predict(xyzi)
         people = np.zeros(msg.height * msg.width, dtype=bool)
         people[inferred_indices[np.isin(predictions, self.people_ids)]] = True
@@ -150,7 +150,7 @@ class OfflineFastLipedeNode(Node):
             topic, serialized, bag_timestamp = reader.read_next()
             records += 1
             if topic == self.input_topic:
-                original = align_cloud(deserialize_message(serialized, PointCloud2), self.lidar_mode)
+                original = deserialize_message(serialized, PointCloud2)
                 try:
                     filtered, people, removed_now = self._filter(original)
                 except Exception as error:

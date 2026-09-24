@@ -81,12 +81,12 @@ def generate_launch_description():
             executable="rviz2",
             name="lipede_rviz",
             output="screen",
-            arguments=["-d", rviz_config],
+            arguments=["-d", PythonExpression([
+                "'", str(share / "rviz" / "lipede_dome.rviz"), "' if '", lidar_mode,
+                "' == 'dome' else '", rviz_config, "'"
+            ])],
             remappings=[
-                ("/ouster/points", PythonExpression([
-                    "'/lipede/aligned_points' if '", lidar_mode,
-                    "' == 'dome' else '", input_topic, "'"
-                ])),
+                ("/ouster/points", input_topic),
                 ("/ouster/points/processed", output_topic),
                 ("/ouster/points/people", people_topic),
             ],

@@ -282,14 +282,14 @@ class FastLipedeNode(Node):
     def _callback(self, msg: PointCloud2) -> None:
         started = time.perf_counter()
         try:
-            msg = align_cloud(msg, self.lidar_mode)
+            aligned = align_cloud(msg, self.lidar_mode)
         except Exception as error:
             self.get_logger().error(f"Cloud alignment failed: {error}")
             return
         if self.aligned_publisher is not None:
-            self.aligned_publisher.publish(msg)
+            self.aligned_publisher.publish(aligned)
         try:
-            xyzi = decode_xyzi(msg, self.intensity_field)
+            xyzi = decode_xyzi(aligned, self.intensity_field)
             predictions, inferred_indices = self.engine.predict(xyzi)
             people = np.zeros(msg.height * msg.width, dtype=bool)
             people[inferred_indices[np.isin(predictions, self.people_ids)]] = True

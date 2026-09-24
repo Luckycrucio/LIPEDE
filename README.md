@@ -35,20 +35,6 @@ Run for Dome ouster (calibrated into the spinning LiDAR frame):
       lidar_mode:=dome \
       bag_path:=/home/autosweep/autosweep/dataset22jul/coverageDome1
 
-Luanch a SLAM algorithm like GLIM:
-- glim() {
-    source /home/autosweep/glim_ws/install/setup.bash
-    ros2 run glim_ros glim_rosnode glim_rosbag /home/autosweep/autosweep/dataset22jul/coverage1_lipede \
-      --ros-args \
-      -p config_path:=/home/autosweep/glim_ws/src/glim/config \
-      -p dump_path:=/home/autosweep/glim_maps/my_map \
-      -r /ouster/points:=/ouster/points/processed
-  }
-  - ros2 run glim_ros glim_rosnode \
-      --ros-args \
-      -p config_path:=/home/autosweep/glim_ws/src/glim/config \
-      -p dump_path:=/home/autosweep/glim_maps/my_map
-
 
 ## Data path through the node
 
@@ -432,19 +418,21 @@ header, and applies the supplied Dome-to-spinning calibration before cropping,
 normal estimation, and inference: `p_os_sensor = R @ p_dome + t`.
 The calibration constants are in `lipede/online_node.py`.
 
-Dome visualization and filtered outputs use `os_sensor`. RViz's fixed and target
-frames are already set to `os_sensor`; its original-cloud display is remapped to
-`/lipede/aligned_points` in Dome mode. No external TF publisher is required for
-these cloud displays. The processed and people topics remain
-`/ouster/points/processed` and `/ouster/points/people`.
+Dome filtered and people outputs retain `ousterDome/os_sensor` and the original
+XYZ coordinates. Calibration is used only for inference; the resulting removal
+mask is applied directly to the original records, without a round-trip transform.
+RViz uses the Dome sensor frame and displays the original input topic. The
+processed and people topics remain `/ouster/points/processed` and
+`/ouster/points/people`. Online mode also publishes the inference-frame cloud on
+`/lipede/aligned_points` for debugging.
 
-Offline output retains the selected input topic name and recorded timestamps;
-in Dome mode its XYZ coordinates and header frame are transformed to `os_sensor`.
-Other bag topics are copied unchanged. Ring, intensity, range, and other sensor
-fields retain their original meaning; range remains the measured Dome range.
-On inference failure, passthrough uses the aligned cloud. A wrong Dome frame
-fails conversion (or drops the online message) instead of applying an incorrect
-calibration. Invalid zero returns become NaNs during alignment.
+Offline output retains the selected input topic name, frame, and recorded timestamps.
+Other bag topics are copied unchanged. Retained points preserve their original
+sensor fields and coordinates; removed records have XYZ set to NaN and range to
+zero while preserving the organized grid. On processing failure, passthrough
+uses the original cloud. A wrong Dome frame drops the online message; offline
+it follows `passthrough_on_error`. Invalid zero returns are excluded from inference
+but remain unchanged in the output.
 
 ```bash
 ros2 launch lipede lipede.launch.py mode:=online lidar_mode:=dome
