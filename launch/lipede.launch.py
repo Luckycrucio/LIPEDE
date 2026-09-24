@@ -14,21 +14,26 @@ def generate_launch_description():
     share = Path(get_package_share_directory("lipede"))
     rviz_config = str(share / "rviz" / "lipede.rviz")
 
+    lidar_mode = LaunchConfiguration("lidar_mode")
     input_topic = LaunchConfiguration("input_topic")
     output_topic = LaunchConfiguration("output_topic")
     people_topic = LaunchConfiguration("people_topic")
     device = LaunchConfiguration("device")
     mode = LaunchConfiguration("mode")
-    is_realtime = IfCondition(PythonExpression(["'", mode, "' == 'real_time'"]))
+    is_realtime = IfCondition(PythonExpression(["'", mode, "' in ('real_time', 'online')"]))
     is_offline = IfCondition(PythonExpression(["'", mode, "' == 'offline'"]))
 
     return LaunchDescription([
-        DeclareLaunchArgument("input_topic", default_value="/ouster/points"),
+        DeclareLaunchArgument("lidar_mode", default_value="spinning", choices=["spinning", "dome"]),
+        DeclareLaunchArgument("input_topic", default_value=PythonExpression([
+            "'/ousterDome/points' if '", lidar_mode, "' == 'dome' else '/ouster/points'"
+        ])),
         DeclareLaunchArgument("output_topic", default_value="/ouster/points/processed"),
         DeclareLaunchArgument("people_topic", default_value="/ouster/points/people"),
         DeclareLaunchArgument("device", default_value="cuda"),
         DeclareLaunchArgument(
             "mode", default_value="real_time",
+            choices=["real_time", "online", "offline"],
             description="Processing mode: 'real_time' or 'offline'",
         ),
         DeclareLaunchArgument(
@@ -47,6 +52,7 @@ def generate_launch_description():
             output="screen",
             condition=is_realtime,
             parameters=[{
+                "lidar_mode": lidar_mode,
                 "input_topic": input_topic,
                 "output_topic": output_topic,
                 "people_topic": people_topic,
@@ -63,6 +69,7 @@ def generate_launch_description():
                 "bag_path": LaunchConfiguration("bag_path"),
                 "output_bag_path": LaunchConfiguration("output_bag_path"),
                 "overwrite_output": LaunchConfiguration("overwrite_output"),
+                "lidar_mode": lidar_mode,
                 "input_topic": input_topic,
                 "output_topic": output_topic,
                 "people_topic": people_topic,
@@ -76,7 +83,10 @@ def generate_launch_description():
             output="screen",
             arguments=["-d", rviz_config],
             remappings=[
-                ("/ouster/points", input_topic),
+                ("/ouster/points", PythonExpression([
+                    "'/lipede/aligned_points' if '", lidar_mode,
+                    "' == 'dome' else '", input_topic, "'"
+                ])),
                 ("/ouster/points/processed", output_topic),
                 ("/ouster/points/people", people_topic),
             ],

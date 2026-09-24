@@ -14,7 +14,7 @@ from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
 from rclpy.serialization import deserialize_message, serialize_message
 from sensor_msgs.msg import PointCloud2
 
-from lipede.online_node import LarsInference, decode_xyzi, filter_records
+from lipede.online_node import LarsInference, decode_xyzi, filter_records, align_cloud, declare_lidar_mode
 
 
 def _default_output(input_bag: Path) -> Path:
@@ -31,7 +31,7 @@ class OfflineFastLipedeNode(Node):
         share = Path(get_package_share_directory("lipede"))
         self.declare_parameter("bag_path", "")
         self.declare_parameter("output_bag_path", "")
-        self.declare_parameter("input_topic", "/ouster/points")
+        self.lidar_mode = declare_lidar_mode(self)
         self.declare_parameter("output_topic", "/ouster/points/processed")
         self.declare_parameter("people_topic", "/ouster/points/people")
         self.declare_parameter("config_path", str(share / "config" / "model.yaml"))
@@ -62,7 +62,10 @@ class OfflineFastLipedeNode(Node):
         qos = QoSProfile(depth=1)
         qos.reliability = ReliabilityPolicy.BEST_EFFORT
         qos.history = HistoryPolicy.KEEP_LAST
-        self.original_publisher = self.create_publisher(PointCloud2, self.input_topic, qos)
+        self.original_publisher = self.create_publisher(
+            PointCloud2,
+            "/lipede/aligned_points" if self.lidar_mode == "dome" else self.input_topic, qos
+        )
         self.filtered_publisher = self.create_publisher(
             PointCloud2, self.get_parameter("output_topic").value, qos
         )
@@ -147,7 +150,7 @@ class OfflineFastLipedeNode(Node):
             topic, serialized, bag_timestamp = reader.read_next()
             records += 1
             if topic == self.input_topic:
-                original = deserialize_message(serialized, PointCloud2)
+                original = align_cloud(deserialize_message(serialized, PointCloud2), self.lidar_mode)
                 try:
                     filtered, people, removed_now = self._filter(original)
                 except Exception as error:

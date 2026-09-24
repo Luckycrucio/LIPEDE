@@ -94,13 +94,15 @@ def filter_records(msg: PointCloud2, keep: np.ndarray, organized: bool = False) 
         if np.any(removed):
             endian = ">" if msg.is_bigendian else "<"
             fields = _field_map(msg)
-            nan_bytes = np.frombuffer(np.float32(np.nan).astype(endian + "f4").tobytes(), dtype=np.uint8)
-            zero_bytes = np.frombuffer(np.uint32(0).astype(endian + "u4").tobytes(), dtype=np.uint8)
             for name in ("x", "y", "z"):
-                offset = fields[name].offset
-                data[removed, offset:offset + 4] = nan_bytes
-            range_offset = fields["range"].offset
-            data[removed, range_offset:range_offset + 4] = zero_bytes
+                field = fields[name]
+                dtype = np.dtype(endian + _ROS_DTYPES[field.datatype])
+                nan_bytes = np.frombuffer(np.array(np.nan, dtype=dtype).tobytes(), dtype=np.uint8)
+                data[removed, field.offset:field.offset + dtype.itemsize] = nan_bytes
+            if "range" in fields:
+                field = fields["range"]
+                size = np.dtype(_ROS_DTYPES[field.datatype]).itemsize
+                data[removed, field.offset:field.offset + size] = 0
         output.height = msg.height
         output.width = msg.width
         output.row_step = output.width * output.point_step
@@ -114,6 +116,62 @@ def filter_records(msg: PointCloud2, keep: np.ndarray, organized: bool = False) 
     output.row_step = output.width * output.point_step
     output.data = kept.tobytes()
     output.is_dense = msg.is_dense
+    return output
+
+
+# Calibration supplied for ousterDome/os_sensor -> os_sensor.
+DOME_ROTATION = np.array([
+    [-0.003657613477955322, -0.0038201698056991784, 0.9999860139853463],
+    [-0.9998039891614791, -0.019443795909781274, -0.0037312273331134007],
+    [0.01945777789056291, -0.999803653275619, -0.0037483031210300455],
+])
+DOME_TRANSLATION = np.array([
+    0.04724019242892285, 0.022665747371672144, -0.20325530655494836,
+])
+
+
+def declare_lidar_mode(node):
+    node.declare_parameter("lidar_mode", "spinning")
+    mode = node.get_parameter("lidar_mode").value
+    if mode not in ("spinning", "dome"):
+        raise ValueError("lidar_mode must be 'spinning' or 'dome'")
+    node.declare_parameter(
+        "input_topic", "/ousterDome/points" if mode == "dome" else "/ouster/points"
+    )
+    return mode
+
+
+def align_cloud(msg: PointCloud2, mode: str) -> PointCloud2:
+    """Apply the Dome extrinsic while preserving layout and non-XYZ fields."""
+    if mode == "spinning":
+        return msg
+    if mode != "dome":
+        raise ValueError(f"Unknown lidar_mode: {mode}")
+    if msg.header.frame_id != "ousterDome/os_sensor":
+        raise ValueError(
+            f"Dome calibration expects ousterDome/os_sensor, got {msg.header.frame_id!r}"
+        )
+    xyz = np.column_stack([_numeric_field(msg, name) for name in ("x", "y", "z")])
+    valid = np.isfinite(xyz).all(axis=1) & (np.linalg.norm(xyz, axis=1) > 1e-6)
+    transformed = xyz @ DOME_ROTATION.T + DOME_TRANSLATION
+    # Invalid zero returns must not become valid points after translation.
+    transformed[~valid] = np.nan
+    output = copy.deepcopy(msg)
+    data = bytearray(msg.data)
+    fields = _field_map(msg)
+    endian = ">" if msg.is_bigendian else "<"
+    for axis, name in enumerate(("x", "y", "z")):
+        field = fields[name]
+        if field.datatype not in (PointField.FLOAT32, PointField.FLOAT64):
+            raise ValueError(f"Dome XYZ field {name} must be floating point")
+        view = np.ndarray(
+            (msg.height, msg.width), dtype=endian + _ROS_DTYPES[field.datatype],
+            buffer=data, offset=field.offset, strides=(msg.row_step, msg.point_step),
+        )
+        view[:] = transformed[:, axis].reshape(msg.height, msg.width)
+    output.data = bytes(data)
+    output.header.frame_id = "os_sensor"
+    output.is_dense = bool(msg.is_dense) and bool(valid.all())
     return output
 
 
@@ -181,7 +239,7 @@ class FastLipedeNode(Node):
     def __init__(self):
         super().__init__("lipede")
         share = Path(get_package_share_directory("lipede"))
-        self.declare_parameter("input_topic", "/ouster/points")
+        self.lidar_mode = declare_lidar_mode(self)
         self.declare_parameter("output_topic", "/ouster/points/processed")
         self.declare_parameter("people_topic", "/ouster/points/people")
         self.declare_parameter("config_path", str(share / "config" / "model.yaml"))
@@ -209,6 +267,10 @@ class FastLipedeNode(Node):
         output_topic = self.get_parameter("output_topic").value
         people_topic = self.get_parameter("people_topic").value
         input_topic = self.get_parameter("input_topic").value
+        self.aligned_publisher = (
+            self.create_publisher(PointCloud2, "/lipede/aligned_points", qos)
+            if self.lidar_mode == "dome" else None
+        )
         self.publisher = self.create_publisher(PointCloud2, output_topic, qos)
         self.people_publisher = self.create_publisher(PointCloud2, people_topic, qos)
         self.subscription = self.create_subscription(PointCloud2, input_topic, self._callback, qos)
@@ -219,6 +281,13 @@ class FastLipedeNode(Node):
 
     def _callback(self, msg: PointCloud2) -> None:
         started = time.perf_counter()
+        try:
+            msg = align_cloud(msg, self.lidar_mode)
+        except Exception as error:
+            self.get_logger().error(f"Cloud alignment failed: {error}")
+            return
+        if self.aligned_publisher is not None:
+            self.aligned_publisher.publish(msg)
         try:
             xyzi = decode_xyzi(msg, self.intensity_field)
             predictions, inferred_indices = self.engine.predict(xyzi)

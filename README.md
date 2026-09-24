@@ -17,17 +17,23 @@ detected people are highlighted in yellow.*
 
 ## AUTOSWEEP USAGE
 
-Launch the fast-lipede ros2 node:
+Source the lipede ros2 node:
 - lipede() {
     cd /home/autosweep/lipede_ws || return
     source install/setup.bash
     source .venv/bin/activate
     export PYTHONPATH="$VIRTUAL_ENV/lib/python3.12/site-packages${PYTHONPATH:+:$PYTHONPATH}"
     cd ..
-    ros2 launch lipede lipede.launch.py \
+  }
+Run for spinning ouster:
+- ros2 launch lipede lipede.launch.py \
       mode:=offline \
       bag_path:=/home/autosweep/autosweep/dataset22jul/bordi
-  }
+Run for Dome ouster (calibrated into the spinning LiDAR frame):
+- ros2 launch lipede lipede.launch.py \
+      mode:=offline \
+      lidar_mode:=dome \
+      bag_path:=/home/autosweep/autosweep/dataset22jul/coverageDome1
 
 Luanch a SLAM algorithm like GLIM:
 - glim() {
@@ -43,10 +49,6 @@ Luanch a SLAM algorithm like GLIM:
       -p config_path:=/home/autosweep/glim_ws/src/glim/config \
       -p dump_path:=/home/autosweep/glim_maps/my_map
 
-
-Play the bag:
-- jazzy
-- ros2 bag play   /home/autosweep/autosweep/dataset22jul/coverage1 
 
 ## Data path through the node
 
@@ -418,3 +420,38 @@ second read/copy.
   `/ouster/points/processed` needs its own buffer to NaN out removed records
   in place, and `/ouster/points/people` needs a compacted buffer since
   deleting arbitrary records can't be represented as a view.
+
+
+### LiDAR selection
+
+`lidar_mode:=spinning` (default) and `lidar_mode:=dome` are mutually exclusive,
+independent of `mode:=offline` or `mode:=online` (`real_time` remains supported).
+Spinning keeps the existing `/ouster/points` input and passes coordinates through.
+Dome defaults to `/ousterDome/points`, requires `ousterDome/os_sensor` in the
+header, and applies the supplied Dome-to-spinning calibration before cropping,
+normal estimation, and inference: `p_os_sensor = R @ p_dome + t`.
+The calibration constants are in `lipede/online_node.py`.
+
+Dome visualization and filtered outputs use `os_sensor`. RViz's fixed and target
+frames are already set to `os_sensor`; its original-cloud display is remapped to
+`/lipede/aligned_points` in Dome mode. No external TF publisher is required for
+these cloud displays. The processed and people topics remain
+`/ouster/points/processed` and `/ouster/points/people`.
+
+Offline output retains the selected input topic name and recorded timestamps;
+in Dome mode its XYZ coordinates and header frame are transformed to `os_sensor`.
+Other bag topics are copied unchanged. Ring, intensity, range, and other sensor
+fields retain their original meaning; range remains the measured Dome range.
+On inference failure, passthrough uses the aligned cloud. A wrong Dome frame
+fails conversion (or drops the online message) instead of applying an incorrect
+calibration. Invalid zero returns become NaNs during alignment.
+
+```bash
+ros2 launch lipede lipede.launch.py mode:=online lidar_mode:=dome
+ros2 launch lipede lipede.launch.py mode:=offline lidar_mode:=dome \
+  bag_path:=/data/coverageDome1 output_bag_path:=/data/coverageDome1_aligned_lipede
+```
+
+This aligns to the calibrated spinning sensor frame, which is gravity-aligned
+only if that sensor frame is level. Normal-estimation projection settings and
+model weights are unchanged; Dome detection quality still needs evaluation.

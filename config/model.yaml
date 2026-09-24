@@ -1,3 +1,5 @@
+# Params Check [!] Check /home/autosweep/autosweep/LARS folder
+
 model_params:
   model_architecture: largekernelseg
   input_dims: 13
